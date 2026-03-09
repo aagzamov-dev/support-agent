@@ -39,15 +39,29 @@ Open **http://localhost:5173**
 | **Tickets** | `/admin` | Admin views all tickets, conversations, and agent reasoning. |
 | **KB** | `/kb` | Admin manages knowledge base articles (vector search). |
 
-## How It Works
+## How It Works (The Support Agent Pipeline)
 
-```
-User sends message (chat or voice)
-  → Agent searches Knowledge Base (RAG / vector search)
-  → Agent generates reply + decides ticket (team, priority)
-  → Ticket created in DB with conversation + reasoning steps
-  → Admin sees everything in /admin
-```
+When a user interacts with the Chat or Voice UI, this is what happens behind the scenes:
+
+1. **User Interaction `(front/src/pages/UserChatPage.tsx)`**:
+   - User types a message or records voice.
+   - React sends an HTTP Request passing the `ticket_id` and the user's secret `session_id`.
+
+2. **API Router `(api/app/routers/chat.py)`**:
+   - The backend `/api/chat` route receives the payload.
+   - It fetches the ongoing chat history from the SQL database using the `ticket_id`.
+
+3. **LangGraph Agent Execution `(api/app/agent/graph.py)`**:
+   - The AI Agent starts its two-step node process automatically:
+   - **Node 1 (`understand`)**: Searches the ChromaDB Knowledge Base (`rag_service.py`) for matching IT articles using Vector Embeddings. It builds the memory prompt.
+   - **Node 2 (`respond`)**: The OpenAI model reads the memory, the articles, and decides exactly how to help the user. It outputs a rigid JSON structure specifying whether to create a ticket (`action='create'`), resolve it, and which Team handles it.
+
+4. **WebSockets Broadcasting `(api/app/core/websockets.py)`**:
+   - The AI's reply is instantly saved to the Database.
+   - The `ConnectionManager` broadcasts this freshly written code instantly to all connected React browsers over WebSockets (meaning no page refreshing needed!). Admin dashboard and User view sync perfectly.
+
+**Looking for a Deep Dive Architecture Guide?**
+👉 **[Read the Backend Agent Logic Guide Here](BACKEND_LOGIC.md)** for detailed Python code examples and beginner-friendly logic explanations for every file!
 
 ## Teams
 

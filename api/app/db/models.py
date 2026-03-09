@@ -21,6 +21,8 @@ class Ticket(Base):
     summary = Column(Text, default="")
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
+    feedback_score = Column(Integer, nullable=True)     # e.g. 1 to 5
+    feedback_text = Column(Text, nullable=True)
 
     messages = relationship("Message", back_populates="ticket", order_by="Message.created_at")
     agent_steps = relationship("AgentStep", back_populates="ticket", order_by="AgentStep.created_at")

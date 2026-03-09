@@ -17,3 +17,8 @@ export async function updateTicket(id: string, updates: Record<string, string>) 
   const { data } = await client.patch(`/api/tickets/${id}`, updates);
   return data;
 }
+
+export async function listUserTickets(sessionId: string) {
+  const { data } = await client.get(`/api/user/tickets?session_id=${sessionId}`);
+  return data as { tickets: Record<string, unknown>[] };
+}

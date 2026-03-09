@@ -16,12 +16,13 @@ _graph.add_edge("respond", END)
 agent_graph = _graph.compile()
 
 
-async def run_support_agent(user_message: str, ticket_id: str = "", channel: str = "chat") -> dict:
+async def run_support_agent(user_message: str, ticket_id: str = "", channel: str = "chat", past_history: str = "") -> dict:
     """Run the support agent. Returns {reply, ticket_action, agent_steps, kb_results}."""
     initial: AgentState = {
         "ticket_id": ticket_id,
         "user_message": user_message,
         "channel": channel,
+        "chat_history_str": past_history,
         "messages": [],
         "kb_results": [],
         "agent_steps": [],

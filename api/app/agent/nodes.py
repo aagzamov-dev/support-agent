@@ -23,7 +23,7 @@ def _get_llm():
 # ── Structured output for ticket decisions ─────────────────────────────
 
 class TicketDecision(BaseModel):
-    should_create_ticket: bool = Field(description="Whether to create a support ticket")
+    action: str = Field(description="Action to take: 'create' for new issue, 'update' for ongoing issue, 'resolve' if fixed, or 'none'")
     title: str = Field(default="", description="Short ticket title")
     team: str = Field(default="help_desk", description="Team: help_desk, devops, sales, network, security")
     priority: str = Field(default="P3", description="Priority: P1, P2, P3, P4")
@@ -53,7 +53,9 @@ async def understand(state: AgentState) -> dict:
         pass
 
     # Build conversation history from existing messages
-    history = ""
+    history = state.get("chat_history_str", "")
+    if history:
+        history += "\n--- Current Session ---\n"
     for m in state.get("messages", []):
         if hasattr(m, "content"):
             role = getattr(m, "type", "human")
@@ -87,10 +89,10 @@ async def respond(state: AgentState) -> dict:
         "output": decision.model_dump(),
     })
 
-    ticket_action = {"action": "none"}
-    if decision.should_create_ticket:
+    ticket_action = {"action": decision.action}
+    if decision.action != "none":
         ticket_action = {
-            "action": "create",
+            "action": decision.action,
             "title": decision.title,
             "team": decision.team,
             "priority": decision.priority,

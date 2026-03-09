@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.event_bus import event_bus
+from app.core.websockets import manager as chat_manager
 
 router = APIRouter(tags=["websocket"])
 
@@ -93,3 +94,15 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
         manager.disconnect(ws)
+
+
+@router.websocket("/api/ws/chat/{ticket_id}")
+async def websocket_chat_endpoint(websocket: WebSocket, ticket_id: str):
+    await chat_manager.connect(websocket, ticket_id)
+    try:
+        while True:
+            # Keep connection alive
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        chat_manager.disconnect(websocket, ticket_id)
+

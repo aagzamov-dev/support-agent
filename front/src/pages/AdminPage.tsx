@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listTickets, getTicket, updateTicket } from '../api/tickets';
+import { sendReply } from '../api/chat';
 import { formatDate } from '../lib/utils';
 
 const TEAMS = ['all', 'help_desk', 'devops', 'sales', 'network', 'security'];
@@ -29,6 +30,12 @@ export default function AdminPage() {
     const patchMut = useMutation({
         mutationFn: (updates: Record<string, string>) => updateTicket(selectedId!, updates),
         onSuccess: () => { qc.invalidateQueries({ queryKey: ['tickets'] }); qc.invalidateQueries({ queryKey: ['ticket-detail', selectedId] }); },
+    });
+
+    const [replyText, setReplyText] = useState('');
+    const replyMut = useMutation({
+        mutationFn: () => sendReply(selectedId!, replyText),
+        onSuccess: () => { qc.invalidateQueries({ queryKey: ['ticket-detail', selectedId] }); setReplyText(''); },
     });
 
     const tickets = ticketsData?.tickets || [];
@@ -97,18 +104,18 @@ export default function AdminPage() {
                         </div>
                         <div className="panel-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             {/* Conversation */}
-                            <div>
+                            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: 'calc(100vh - 180px)' }}>
                                 <h3 className="mb-2">💬 Conversation</h3>
-                                <div className="flex-col gap-2">
+                                <div className="flex-col gap-2" style={{ flex: 1, overflowY: 'auto', paddingRight: 4 }}>
                                     {(detail.messages || []).map((m: Record<string, unknown>) => (
                                         <div key={m.id as string} style={{
                                             padding: '10px 14px', borderRadius: 'var(--radius-sm)',
-                                            background: m.role === 'user' ? 'rgba(79,110,247,0.1)' : 'var(--bg-input)',
-                                            borderLeft: `3px solid ${m.role === 'user' ? 'var(--accent)' : 'var(--success)'}`,
+                                            background: m.role === 'user' ? 'rgba(79,110,247,0.1)' : m.role === 'admin' ? 'rgba(245,158,11,0.1)' : 'var(--bg-input)',
+                                            borderLeft: `3px solid ${m.role === 'user' ? 'var(--accent)' : m.role === 'admin' ? 'var(--warning)' : 'var(--success)'}`,
                                         }}>
                                             <div className="flex items-center justify-between mb-2">
-                                                <span style={{ fontWeight: 600, fontSize: '0.8rem', color: m.role === 'user' ? 'var(--accent)' : 'var(--success)' }}>
-                                                    {m.role === 'user' ? '👤 User' : '🤖 Agent'}
+                                                <span style={{ fontWeight: 600, fontSize: '0.8rem', color: m.role === 'user' ? 'var(--accent)' : m.role === 'admin' ? 'var(--warning)' : 'var(--success)' }}>
+                                                    {m.role === 'user' ? '👤 User' : m.role === 'admin' ? '🛡️ Admin' : '🤖 Agent'}
                                                     {m.channel !== 'chat' && <span className="text-muted" style={{ marginLeft: 6 }}>via {m.channel as string}</span>}
                                                 </span>
                                                 <span className="text-xs text-muted">{formatDate(m.created_at as string)}</span>
@@ -116,6 +123,10 @@ export default function AdminPage() {
                                             <p className="text-sm" style={{ whiteSpace: 'pre-wrap' }}>{m.content as string}</p>
                                         </div>
                                     ))}
+                                </div>
+                                <div className="mt-4 flex gap-2" style={{ flexShrink: 0 }}>
+                                    <input className="form-input w-full" placeholder="Type a reply to the user..." value={replyText} onChange={(e) => setReplyText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && replyText) replyMut.mutate(); }} disabled={replyMut.isPending} />
+                                    <button className="btn btn-primary btn-sm" onClick={() => replyMut.mutate()} disabled={!replyText || replyMut.isPending}>Reply</button>
                                 </div>
                             </div>
 
@@ -138,7 +149,7 @@ export default function AdminPage() {
                                                 </span>
                                                 <div>
                                                     <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>{s.step_type as string}</div>
-                                                    {s.tool_name && <div className="text-xs text-muted">{s.tool_name as string}</div>}
+                                                    {Boolean(s.tool_name) && <div className="text-xs text-muted">{s.tool_name as string}</div>}
                                                 </div>
                                             </div>
                                             <details style={{ fontSize: '0.75rem' }}>
@@ -165,6 +176,9 @@ export default function AdminPage() {
                                         <div className="flex justify-between"><span className="text-muted">Priority:</span> <span style={{ color: PRIORITY_COLORS[detail.priority] }}>{detail.priority}</span></div>
                                         <div className="flex justify-between"><span className="text-muted">Status:</span> <span>{detail.status}</span></div>
                                         <div className="flex justify-between"><span className="text-muted">Created:</span> <span>{formatDate(detail.created_at)}</span></div>
+                                        {Number(detail.feedback_score) > 0 && (
+                                            <div className="flex justify-between"><span className="text-muted">Feedback:</span> <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>{detail.feedback_score as number}/5 ⭐️</span></div>
+                                        )}
                                         {detail.summary && <div className="mt-2" style={{ padding: 8, background: 'var(--bg-card)', borderRadius: 'var(--radius-sm)' }}><span className="text-muted text-xs">Summary:</span><p className="text-sm">{detail.summary}</p></div>}
                                     </div>
                                 </div>

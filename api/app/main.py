@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.db.engine import engine
 from app.db.models import Base
-from app.routers import chat, voice, tickets, kb
+from app.routers import chat, voice, tickets, kb, ws
 
 
 Path("storage").mkdir(exist_ok=True)
@@ -42,6 +42,7 @@ app.include_router(chat.router)
 app.include_router(voice.router)
 app.include_router(tickets.router)
 app.include_router(kb.router)
+app.include_router(ws.router)
 
 
 @app.get("/", tags=["health"])
