@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { sendMessage, transcribeVoice, sendFeedback } from '../api/chat';
-import { getTicket, listUserTickets } from '../api/tickets';
+import { getTicket, listUserTickets, createTicket } from '../api/tickets';
 import { formatDate } from '../lib/utils';
+import AudioRecorder from '../components/AudioRecorder';
+import { MessageSquare, Mic } from 'lucide-react';
 
 interface ChatMsg {
     id: string | number;
     role: 'user' | 'agent' | 'system' | 'admin';
     content: string;
     ticket?: Record<string, unknown> | null;
+    audio_url?: string | null;
 }
 
 export default function UserChatPage() {
@@ -17,14 +20,17 @@ export default function UserChatPage() {
     ]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [recording, setRecording] = useState(false);
-    const [mediaRec, setMediaRec] = useState<MediaRecorder | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     // Continuous Context
     const [activeTicket, setActiveTicket] = useState<Record<string, unknown> | null>(null);
     const [isResolved, setIsResolved] = useState(false);
     const [feedbackGiven, setFeedbackGiven] = useState(false);
+    const [agentStatus, setAgentStatus] = useState<string | null>(null);
+
+    // New Ticket Modal State
+    const [showNewModal, setShowNewModal] = useState(false);
+    const [newTicketChannel, setNewTicketChannel] = useState<'chat' | 'email' | 'voice'>('chat');
 
     // Auth Hack
     const [sessionId] = useState(() => {
@@ -49,6 +55,7 @@ export default function UserChatPage() {
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === "new_message") {
+                    setAgentStatus(null);
                     const m = data.message;
                     setMessages(prev => {
                         // Prevent duplicates
@@ -58,6 +65,8 @@ export default function UserChatPage() {
                 } else if (data.type === "ticket_update") {
                     if (data.ticket.status === 'resolved') setIsResolved(true);
                     refetchHistory();
+                } else if (data.type?.startsWith("AGENT_")) {
+                    setAgentStatus(data.message);
                 }
             } catch (e) {
                 console.error("WS Parse error", e);
@@ -67,11 +76,29 @@ export default function UserChatPage() {
         return () => ws.close();
     }, [activeTicket?.id, refetchHistory]);
 
-    const handleNewChat = () => {
-        setActiveTicket(null);
-        setIsResolved(false);
-        setFeedbackGiven(false);
-        setMessages([{ id: Date.now(), role: 'agent', content: "Hello! 👋 I'm your support assistant. Let's get started on a new issue. What can I help you with?" }]);
+    const handleNewChatClick = () => {
+        setShowNewModal(true);
+    };
+
+    const handleCreateTicket = async () => {
+        setShowNewModal(false);
+        setLoading(true);
+        try {
+            const t = await createTicket("New Support Request", newTicketChannel, sessionId);
+            setActiveTicket(t);
+            setIsResolved(false);
+            setFeedbackGiven(false);
+
+            let welcome = "Hello! 👋 I'm your support assistant. Let's get started on a new issue. What can I help you with?";
+            if (newTicketChannel === 'email') welcome = "Subject: Open Support Ticket\n\nPlease reply with the details of your request in an email format.";
+            if (newTicketChannel === 'voice') welcome = "Voice mode active. Please click the microphone to send your request.";
+
+            setMessages([{ id: Date.now(), role: 'agent', content: welcome }]);
+            refetchHistory(); // Instantly shows in sidebar
+        } catch {
+            alert('Failed to create ticket instantly.');
+        }
+        setLoading(false);
     };
 
     const loadTicket = async (ticketId: string) => {
@@ -83,7 +110,7 @@ export default function UserChatPage() {
             setFeedbackGiven(!!t.feedback_score);
 
             const dbMessages = (t.messages || []).map((m: any) => ({
-                id: m.id, role: m.role, content: m.content
+                id: m.id, role: m.role, content: m.content, audio_url: m.metadata?.audio_url
             }));
 
             setMessages([{ id: 0, role: 'agent', content: "Loading history..." }, ...dbMessages]);
@@ -100,11 +127,12 @@ export default function UserChatPage() {
         const userMsg: ChatMsg = { id: Date.now(), role: 'user', content: text };
         setMessages((m) => [...m, userMsg]);
         setLoading(true);
+        setAgentStatus("Thinking...");
         try {
             const ticketId = (activeTicket?.id as string) || '';
             // Pass session_id inside message or adjust backend to infer.
             // For now activeTicket dictates context.
-            const res = await sendMessage(text, 'chat', ticketId, sessionId);
+            const res = await sendMessage(text, activeTicket?.channel as string || 'chat', ticketId, sessionId);
 
             if (res.ticket) {
                 setActiveTicket(res.ticket);
@@ -129,61 +157,8 @@ export default function UserChatPage() {
             setMessages((m) => [...m, { id: Date.now() + 1, role: 'system', content: '❌ Failed to get response. Please try again.' }]);
         }
         setLoading(false);
+        setAgentStatus(null);
     };
-
-    const startRec = async () => {
-        if (isResolved) return;
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mr = new MediaRecorder(stream);
-            const chunks: BlobPart[] = [];
-            mr.ondataavailable = (e) => chunks.push(e.data);
-            mr.onstop = async () => {
-                stream.getTracks().forEach((t) => t.stop());
-                const blob = new Blob(chunks, { type: 'audio/webm' });
-                setLoading(true);
-                try {
-                    const ticketId = (activeTicket?.id as string) || '';
-                    const res = await transcribeVoice(blob, ticketId, sessionId);
-
-                    if (res.ticket) {
-                        setActiveTicket(res.ticket);
-                        if (res.ticket.status === 'resolved') setIsResolved(true);
-                        refetchHistory();
-                    }
-
-                    // Audio transcript represents user input
-                    setMessages((m) => [
-                        ...m,
-                        { id: Date.now(), role: 'user', content: `🎤 ${res.transcript}` }
-                    ]);
-
-                    const agentMsg: ChatMsg = {
-                        id: res.message_id || Date.now() + 1,
-                        role: 'agent',
-                        content: res.reply,
-                        ticket: !activeTicket && res.ticket ? res.ticket : null
-                    };
-                    setMessages((m) => {
-                        if (res.message_id && m.some(x => x.id === res.message_id)) {
-                            return m.map(x => x.id === res.message_id ? { ...agentMsg, ticket: agentMsg.ticket || x.ticket } : x);
-                        }
-                        return [...m, agentMsg];
-                    });
-                } catch {
-                    setMessages((m) => [...m, { id: Date.now(), role: 'system', content: '❌ Voice transcription failed.' }]);
-                }
-                setLoading(false);
-            };
-            mr.start();
-            setMediaRec(mr);
-            setRecording(true);
-        } catch {
-            alert('Microphone access denied');
-        }
-    };
-
-    const stopRec = () => { mediaRec?.stop(); setRecording(false); };
 
     const handleFeedback = async (score: number) => {
         if (!activeTicket) return;
@@ -196,133 +171,254 @@ export default function UserChatPage() {
     };
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', height: 'calc(100vh - 56px - 48px)', gap: 1 }}>
+        <div style={{
+            display: 'grid',
+            gridTemplateColumns: '300px 1fr',
+            height: 'calc(100vh - 56px)',
+            background: 'var(--bg-primary)',
+            position: 'absolute',
+            top: 56,
+            left: 240,
+            right: 0,
+            bottom: 0
+        }}>
 
             {/* Sidebar: History */}
-            <div style={{ background: 'var(--bg-card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 600 }}>My Tickets</span>
-                    <button className="btn btn-secondary btn-sm" onClick={handleNewChat}>+ New Chat</button>
+            <div style={{ background: 'var(--bg-card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <div style={{ padding: '20px 16px', borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)', flexShrink: 0 }}>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 style={{ margin: 0 }}>Support Tickets</h3>
+                        <button className="btn btn-primary btn-sm" onClick={handleNewChatClick}>+ New Chat</button>
+                    </div>
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
-                    {(userHistory?.tickets || []).map((t: any) => (
+                <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column' }}>
+                    {(userHistory?.tickets || []).filter((t: any) => t.channel !== 'email').map((t: any) => (
                         <div key={t.id}
                             onClick={() => loadTicket(t.id)}
                             style={{
-                                padding: '10px 12px',
-                                marginBottom: 6,
-                                borderRadius: 'var(--radius-sm)',
+                                padding: '12px 14px',
+                                marginBottom: 8,
+                                borderRadius: 'var(--radius)',
                                 cursor: 'pointer',
-                                background: activeTicket?.id === t.id ? 'var(--bg-input)' : 'transparent',
-                                borderLeft: activeTicket?.id === t.id ? '3px solid var(--accent)' : '3px solid transparent'
+                                transition: 'all 0.2s',
+                                background: activeTicket?.id === t.id ? 'var(--accent-glow)' : 'rgba(255,255,255,0.03)',
+                                border: activeTicket?.id === t.id ? '1px solid var(--accent)' : '1px solid transparent',
+                                boxShadow: activeTicket?.id === t.id ? 'var(--shadow-glow)' : 'none'
                             }}>
                             <div className="flex justify-between items-center mb-1">
-                                <span style={{ fontWeight: 600, fontSize: '0.8rem' }}>{t.id}</span>
-                                <span className={`badge ${t.status === 'resolved' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.65rem' }}>{t.status}</span>
+                                <span style={{ fontWeight: 700, fontSize: '0.75rem', color: activeTicket?.id === t.id ? 'var(--accent)' : 'var(--text-secondary)' }}>{t.id}</span>
+                                <span className={`badge ${t.status === 'resolved' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.6rem' }}>{t.status}</span>
                             </div>
-                            <div className="text-xs text-muted" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title || 'Support Request'}</div>
-                            <div className="text-xs text-muted" style={{ marginTop: 4 }}>{formatDate(t.created_at)}</div>
+                            <div className="text-sm font-medium truncate" style={{ color: activeTicket?.id === t.id ? 'var(--text)' : 'var(--text-secondary)' }}>{t.title || 'Support Request'}</div>
+                            <div className="text-xs text-muted mt-2">{formatDate(t.created_at)}</div>
                         </div>
                     ))}
                     {!userHistory?.tickets?.length && (
-                        <div className="p-4 text-center text-sm text-muted">No tickets yet. Start a chat!</div>
+                        <div className="p-8 text-center text-sm text-muted">
+                            <span style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }}>💬</span>
+                            No tickets yet.<br />Start a chat today!
+                        </div>
                     )}
                 </div>
             </div>
 
             {/* Main Chat Area */}
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-secondary)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                 {/* Messages */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px 20px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                     {activeTicket && (
-                        <div style={{ textAlign: 'center', margin: '20px 0', padding: 10, background: 'var(--bg-card)', borderRadius: 'var(--radius-sm)' }}>
-                            <span className="text-sm font-bold">Currently Viewing: {activeTicket.id as string}</span>
+                        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                            <span style={{
+                                padding: '6px 16px',
+                                background: 'var(--bg-card)',
+                                borderRadius: '20px',
+                                border: '1px solid var(--border)',
+                                fontSize: '0.8rem',
+                                color: 'var(--text-secondary)'
+                            }}>
+                                Active Ticket: <strong>{activeTicket.id as string}</strong>
+                            </span>
                         </div>
                     )}
-                    {messages.map((msg) => (
-                        <div key={msg.id} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', padding: '10px 0' }}>
-                            <div style={{
-                                maxWidth: '70%',
-                                padding: '12px 16px',
-                                borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                                background: msg.role === 'user' ? 'var(--accent)' : msg.role === 'admin' ? 'var(--warning-light)' : msg.role === 'system' ? 'var(--danger)' : 'var(--bg-card)',
-                                color: msg.role === 'user' ? '#fff' : 'var(--text)',
-                                border: (msg.role === 'agent' || msg.role === 'admin') ? '1px solid var(--border)' : 'none',
-                                whiteSpace: 'pre-wrap', fontSize: '0.9rem', lineHeight: 1.5,
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                            }}>
-                                {msg.role === 'admin' && <div style={{ fontWeight: 600, fontSize: '0.8rem', marginBottom: 4, color: 'var(--warning)' }}>👤 Human Support</div>}
-                                {msg.content}
-                                {msg.ticket && (
-                                    <div style={{
-                                        marginTop: 10, padding: '10px 12px', borderRadius: 'var(--radius-sm)',
-                                        background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-                                    }}>
-                                        <span style={{ fontWeight: 600, color: 'var(--success)' }}>🎫 Ticket Created</span>
-                                        <div className="text-sm" style={{ marginTop: 4 }}>
-                                            <strong>{msg.ticket.id as string}</strong> · {msg.ticket.team as string} · {msg.ticket.priority as string}
+
+                    <div className="flex flex-col gap-6">
+                        {messages.map((msg) => (
+                            <div key={msg.id} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                                <div className={`chat-bubble ${msg.role === 'user' ? 'chat-bubble-user' : msg.role === 'admin' ? 'chat-bubble-admin' : 'chat-bubble-agent'}`}>
+                                    {msg.role === 'admin' && <div style={{ fontWeight: 700, fontSize: '0.7rem', color: 'var(--warning)', marginBottom: 4, textTransform: 'uppercase' }}>🛡️ Human Agent</div>}
+                                    {msg.content}
+                                    {msg.audio_url && (
+                                        <div style={{ marginTop: 8 }}>
+                                            <audio src={msg.audio_url.startsWith('http') ? msg.audio_url : `http://localhost:8000${msg.audio_url.startsWith('/') ? '' : '/'}${msg.audio_url}`} controls style={{ height: 36, width: '100%', maxWidth: 240, borderRadius: 18, filter: msg.role === 'user' ? 'invert(1)' : 'none' }} />
                                         </div>
-                                        <div className="text-xs text-muted">{msg.ticket.title as string}</div>
-                                    </div>
-                                )}
+                                    )}
+                                    {msg.ticket && (
+                                        <div style={{
+                                            marginTop: 12, padding: '12px', borderRadius: 'var(--radius-sm)',
+                                            background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)',
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                                <span style={{ fontSize: '1.2rem' }}>🎫</span>
+                                                <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Ticket Created</span>
+                                            </div>
+                                            <div className="text-xs font-mono" style={{ opacity: 0.8 }}>
+                                                {msg.ticket.id as string} · {msg.ticket.team as string} · {msg.ticket.priority as string}
+                                            </div>
+                                            <div className="text-xs mt-1" style={{ opacity: 0.7 }}>{msg.ticket.title as string}</div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
 
                     {loading && (
-                        <div style={{ display: 'flex', padding: '4px 0' }}>
-                            <div style={{ padding: '12px 16px', borderRadius: '16px 16px 16px 4px', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-                                <div className="flex items-center gap-2"><div className="spinner" /> <span className="text-sm text-muted">Thinking...</span></div>
+                        <div className="mt-4">
+                            <div className="agent-status-tag">
+                                <div className="spinner" />
+                                <span>{agentStatus || "Thinking..."}</span>
                             </div>
                         </div>
                     )}
 
                     {isResolved && !feedbackGiven && (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
-                            <div style={{ padding: '20px', borderRadius: 'var(--radius-md)', background: 'var(--bg-card)', border: '1px solid var(--success)', textAlign: 'center' }}>
-                                <h3 style={{ margin: '0 0 10px 0', color: 'var(--success)' }}>Issue Resolved</h3>
-                                <p style={{ margin: '0 0 15px 0', fontSize: '0.9rem' }}>How was your support experience?</p>
-                                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+                            <div style={{ padding: '32px', borderRadius: 'var(--radius-lg)', background: 'var(--bg-card)', border: '1px solid var(--success)', textAlign: 'center', boxShadow: 'var(--shadow-lg)' }}>
+                                <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🏁</div>
+                                <h2 style={{ margin: '0 0 8px 0', color: 'var(--success)' }}>Issue Resolved</h2>
+                                <p style={{ margin: '0 0 24px 0', color: 'var(--text-secondary)' }}>We hope we could help you today. How was your experience?</p>
+                                <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
                                     {[1, 2, 3, 4, 5].map(score => (
-                                        <button key={score} onClick={() => handleFeedback(score)} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
-                                            {score} ⭐️
+                                        <button key={score} onClick={() => handleFeedback(score)} className="btn btn-secondary" style={{ width: 50, height: 50, justifyContent: 'center', fontSize: '1.2rem' }}>
+                                            {score}
                                         </button>
                                     ))}
                                 </div>
                             </div>
                         </div>
-                    )}
+                    )
+                    }
 
-                    {feedbackGiven && (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
-                            <div style={{ padding: '12px 20px', borderRadius: 'var(--radius-md)', background: 'rgba(34, 197, 94, 0.1)', color: 'var(--success)' }}>
-                                Thank you for your feedback! The chat is now closed.
+                    {
+                        feedbackGiven && (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+                                <div style={{ padding: '16px 32px', borderRadius: '30px', background: 'rgba(34, 197, 94, 0.1)', color: 'var(--success)', border: '1px solid var(--success)', fontWeight: 600 }}>
+                                    ✅ Thank you for your feedback!
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )
+                    }
 
-                    <div ref={bottomRef} />
+                    <div ref={bottomRef} style={{ height: 20 }} />
                 </div>
 
-                {/* Input */}
-                <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)', padding: 16, background: 'var(--bg-card)' }}>
-                    <div className="flex gap-2">
-                        <button className={`btn ${recording ? 'btn-danger' : 'btn-secondary'} btn-icon`} onClick={recording ? stopRec : startRec} title="Voice input" disabled={isResolved}>
-                            {recording ? '⏹' : '🎤'}
-                        </button>
-                        <input
-                            className="form-input w-full"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
-                            placeholder={isResolved ? "This ticket has been resolved. Click + New Chat to start over." : "Type your message..."}
-                            disabled={loading || isResolved}
-                            style={{ fontSize: '0.95rem', padding: '10px 14px' }}
-                        />
-                        <button className="btn btn-primary" onClick={send} disabled={!input.trim() || loading || isResolved}>Send</button>
+                {/* Input Area */}
+                <div style={{ borderTop: '1px solid var(--border)', padding: '20px 24px', background: 'var(--bg-card)' }}>
+                    <div className="flex gap-4 items-center">
+                        {activeTicket?.channel === 'voice' ? (
+                            <div className="flex items-center gap-4 w-full">
+                                <div style={{ flex: 1, padding: 10, color: '#888', fontStyle: 'italic' }}>
+                                    Voice mode active. Record your request:
+                                </div>
+                                <AudioRecorder
+                                    onSend={async (blob) => {
+                                        setLoading(true);
+                                        try {
+                                            const ticketId = (activeTicket?.id as string) || '';
+                                            const res = await transcribeVoice(blob, ticketId, sessionId);
+                                            if (res.ticket) {
+                                                setActiveTicket(res.ticket);
+                                                if (res.ticket.status === 'resolved') setIsResolved(true);
+                                                refetchHistory();
+                                            }
+                                            setMessages(m => [...m, { id: Date.now(), role: 'user', content: `🎤 ${res.transcript}`, audio_url: res.audio_url }]);
+                                            setMessages(m => [...m, { id: res.message_id || Date.now() + 1, role: 'agent', content: res.reply, audio_url: res.agent_audio_url }]);
+                                        } finally {
+                                            setLoading(false);
+                                        }
+                                    }}
+                                    disabled={loading || isResolved}
+                                />
+                            </div>
+                        ) : (
+                            <>
+                                <div style={{ flex: 1, position: 'relative' }}>
+                                    <input
+                                        className="form-input w-full"
+                                        value={input}
+                                        onChange={(e) => setInput(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+                                        placeholder={isResolved ? "Ticket has been resolved." : activeTicket?.channel === 'email' ? "Type your email reply here..." : "Describe your problem..."}
+                                        disabled={loading || isResolved}
+                                        style={{ borderRadius: '24px', padding: '12px 24px', background: 'var(--bg-input)' }}
+                                    />
+                                </div>
+                                <button
+                                    className="btn btn-primary"
+                                    style={{ borderRadius: '24px', padding: '0 24px', height: 44 }}
+                                    onClick={send}
+                                    disabled={!input.trim() || loading || isResolved}
+                                >
+                                    Send
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
+
+            {/* New Ticket Modal */}
+            {showNewModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)'
+                }}>
+                    <div style={{
+                        background: 'var(--bg-card)', padding: '32px', borderRadius: 'var(--radius-lg)',
+                        width: '400px', maxWidth: '90vw', border: '1px solid var(--border)',
+                        boxShadow: 'var(--shadow-lg)'
+                    }}>
+                        <h2 style={{ margin: '0 0 16px', fontSize: '1.5rem' }}>Create New Ticket</h2>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
+                            Choose your preferred communication mode for this ticket.
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px', marginBottom: '32px' }}>
+                            {[
+                                { id: 'chat', label: 'Chat', icon: <MessageSquare size={18} /> },
+                                { id: 'voice', label: 'Voice', icon: <Mic size={18} /> }
+                            ].map((mode) => (
+                                <button
+                                    key={mode.id}
+                                    onClick={() => setNewTicketChannel(mode.id as any)}
+                                    className="btn"
+                                    style={{
+                                        flex: 1,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '8px',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '16px',
+                                        height: 'auto',
+                                        background: newTicketChannel === mode.id ? 'var(--accent)' : 'var(--bg-secondary)',
+                                        color: newTicketChannel === mode.id ? '#fff' : 'var(--text)',
+                                        border: newTicketChannel === mode.id ? 'none' : '1px solid var(--border)',
+                                        borderRadius: 'var(--radius)'
+                                    }}
+                                >
+                                    {mode.icon}
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{mode.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button className="btn btn-secondary" onClick={() => setShowNewModal(false)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={handleCreateTicket}>Start Ticket</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

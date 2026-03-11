@@ -3,13 +3,15 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.db.engine import engine
 from app.db.models import Base
 from app.routers import chat, voice, tickets, kb, ws
+import traceback
 
 
 Path("storage").mkdir(exist_ok=True)
@@ -29,6 +31,17 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "traceback": traceback.format_exc(),
+            "path": request.url.path
+        }
+    )
 
 app.add_middleware(
     CORSMiddleware,

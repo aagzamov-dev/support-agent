@@ -1,7 +1,3 @@
-"""Audio service — Speech-to-Text via OpenAI whisper-1."""
-
-from __future__ import annotations
-
 import io
 from pathlib import Path
 
@@ -41,3 +37,22 @@ async def transcribe_audio(
         "model": settings.STT_MODEL,
         "file_size": len(audio_bytes),
     }
+
+async def generate_audio(text: str, filename: str | None = None) -> str:
+    """Generate audio from text using OpenAI TTS."""
+    import uuid
+    if not filename:
+        filename = f"reply_{uuid.uuid4().hex[:8]}.mp3"
+        
+    response = await client.audio.speech.create(
+        model="tts-1",
+        voice="alloy",
+        input=text
+    )
+    
+    save_path = AUDIO_DIR / filename
+    
+    # Write the response content to file
+    save_path.write_bytes(response.read())
+    
+    return f"/static/audio/{filename}"

@@ -22,6 +22,21 @@ async def list_tickets(
 ):
     return {"tickets": await svc.list_tickets(db, team=team, status=status, limit=limit)}
 
+@router.post("/tickets/create")
+async def create_ticket_endpoint(
+    title: str = Query("New Chat Support Ticket"),
+    team: str = Query("help_desk"),
+    priority: str = Query("P3"),
+    channel: str = Query("chat"),
+    created_by: str = Query("user"),
+    db: AsyncSession = Depends(get_session)
+):
+    ticket = await svc.create_ticket(
+        db, title=title, team=team, priority=priority, created_by=created_by, summary=f"Channel: {channel}"
+    )
+    # If the model has a channel field, we can update it; otherwise store in summary
+    return ticket
+
 
 @router.get("/user/tickets")
 async def list_user_tickets(session_id: str, db: AsyncSession = Depends(get_session)):

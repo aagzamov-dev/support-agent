@@ -125,7 +125,9 @@ export default function IncidentDetailPage() {
                                         )}
                                         {evt.kind === 'tool_result' && evt.data && (
                                             <details className="mt-2" style={{ fontSize: '0.8rem' }}>
-                                                <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Tool Output</summary>
+                                                <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                                    Tool Output {((evt.data as any)?.output?.duration_ms !== undefined) ? `(${(evt.data as any).output.duration_ms} ms)` : ''}
+                                                </summary>
                                                 <pre style={{ marginTop: 4, fontSize: '0.75rem' }}>{JSON.stringify(evt.data, null, 2)}</pre>
                                             </details>
                                         )}

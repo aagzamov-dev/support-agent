@@ -8,13 +8,14 @@ from pathlib import Path
 from typing import Any
 
 import chromadb
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 
 from app.core.config import settings
 
 # ── Clients ────────────────────────────────────────────────────────────
 
 _openai = OpenAI(api_key=settings.OPENAI_API_KEY)
+_async_openai = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 CHROMA_DIR = Path("storage/kb/chroma")
 CHROMA_DIR.mkdir(parents=True, exist_ok=True)
@@ -26,6 +27,9 @@ _collection = _chroma.get_or_create_collection(
     name=COLLECTION_NAME,
     metadata={"hnsw:space": "cosine"},
 )
+
+# Only these keys can be used in ChromaDB 'where' clause
+ALLOWED_FILTER_KEYS = {"doc_id", "doc_title", "section", "category", "tags", "section_index"}
 
 KB_FILE = Path("storage/kb/seed_data.json")
 
@@ -39,6 +43,24 @@ def _embed(texts: list[str]) -> list[list[float]]:
         input=texts,
     )
     return [d.embedding for d in resp.data]
+
+
+def embed_text(text: str) -> list[float]:
+    """Exposed method for single text embedding."""
+    return _embed([text])[0]
+
+async def _embed_async(texts: list[str]) -> list[list[float]]:
+    """Embed texts asynchronously using OpenAI text-embedding-3-small."""
+    resp = await _async_openai.embeddings.create(
+        model=settings.EMBEDDING_MODEL,
+        input=texts,
+    )
+    return [d.embedding for d in resp.data]
+
+async def embed_text_async(text: str) -> list[float]:
+    """Async exposed method for single text embedding."""
+    res = await _embed_async([text])
+    return res[0]
 
 
 # ── Chunking ───────────────────────────────────────────────────────────
@@ -124,18 +146,36 @@ def rebuild_index() -> int:
 
 # ── Search ─────────────────────────────────────────────────────────────
 
-def search(query: str, top_k: int = 5) -> list[dict]:
+def search(query: str, top_k: int = 5, filters: dict = None) -> list[dict]:
     """Semantic search over the knowledge base. Returns top-k chunks."""
     if _collection.count() == 0:
         rebuild_index()
     if _collection.count() == 0:
         return []
 
+    where_clause = None
+    if filters:
+        # Only allow keys that exist in our collection metadata to prevent 0 results
+        valid_filters = {
+            k: v for k, v in filters.items() 
+            if k in ALLOWED_FILTER_KEYS and isinstance(v, (str, int, float, bool))
+        }
+        if valid_filters:
+            if len(valid_filters) == 1:
+                where_clause = valid_filters
+            else:
+                where_clause = {"$and": [{k: v} for k, v in valid_filters.items()]}
+
     query_embedding = _embed([query])[0]
-    results = _collection.query(
-        query_embeddings=[query_embedding],
-        n_results=min(top_k, _collection.count()),
-    )
+    
+    kwargs = {
+        "query_embeddings": [query_embedding],
+        "n_results": min(top_k, _collection.count())
+    }
+    if where_clause:
+        kwargs["where"] = where_clause
+
+    results = _collection.query(**kwargs)
 
     hits = []
     for i in range(len(results["ids"][0])):
@@ -145,10 +185,11 @@ def search(query: str, top_k: int = 5) -> list[dict]:
             "doc_title": meta.get("doc_title", ""),
             "section": meta.get("section", ""),
             "category": meta.get("category", ""),
-            "tags": meta.get("tags", "").split(","),
+            "tags": meta.get("tags", "").split(",") if meta.get("tags") else [],
             "content": results["documents"][0][i] if results["documents"] else "",
             "relevance": round(1 - (results["distances"][0][i] if results["distances"] else 1), 3),
         })
+    
     return hits
 
 

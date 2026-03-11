@@ -270,6 +270,75 @@ a:hover { color: var(--accent-hover); }
 .timeline-time { font-size: 0.75rem; color: var(--text-muted); }
 .timeline-summary { font-size: 0.85rem; margin-top: 2px; }
 .timeline-data { margin-top: 6px; }
+/* ── Chat bubbles ──────────────────────────────────────────────── */
+.chat-bubble {
+  max-width: 80%;
+  padding: 14px 20px;
+  border-radius: 18px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  position: relative;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s;
+}
+.chat-bubble-user {
+  background: linear-gradient(135deg, var(--accent) 0%, #3b5bdb 100%);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+  align-self: flex-end;
+}
+.chat-bubble-agent {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-bottom-left-radius: 4px;
+  align-self: flex-start;
+}
+.chat-bubble-admin {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--text);
+  border-bottom-left-radius: 4px;
+  align-self: flex-start;
+}
+
+.reasoning-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+.reasoning-card:hover {
+  border-color: var(--accent);
+}
+.reasoning-header {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+.reasoning-body {
+  padding: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Status Indicators ─────────────────────────────────────────── */
+.agent-status-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  background: var(--accent-glow);
+  border-radius: 20px;
+  margin-bottom: 16px;
+  width: fit-content;
+}
 
 /* ── Panels (detail page) ──────────────────────────────────────── */
 .detail-layout {
@@ -330,6 +399,8 @@ a:hover { color: var(--accent-hover); }
 .gap-2 { gap: 8px; }
 .gap-3 { gap: 12px; }
 .gap-4 { gap: 16px; }
+.gap-6 { gap: 24px; }
+.gap-8 { gap: 32px; }
 .w-full { width: 100%; }
 .text-sm { font-size: 0.85rem; }
 .text-xs { font-size: 0.75rem; }

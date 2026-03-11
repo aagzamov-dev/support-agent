@@ -24,6 +24,17 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
 
     past_history = ""
     current_ticket = None
+    
+    # 1. Duplicate detection if new thread
+    is_dup = False
+    dup_id = ""
+    if not body.ticket_id:
+        detected = await svc.detect_duplicate_ticket(db, body.session_id, body.message)
+        if detected:
+            is_dup = True
+            dup_id = detected
+            body.ticket_id = detected # implicitly route to that ticket
+    
     if body.ticket_id:
         current_ticket = await svc.get_ticket(db, body.ticket_id)
         if current_ticket:
@@ -32,7 +43,14 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
                 past_history += f"{role}: {m['content']}\n"
 
     # Run the agent
-    result = await run_support_agent(body.message, ticket_id=body.ticket_id, channel=body.channel, past_history=past_history)
+    result = await run_support_agent(
+        body.message, 
+        ticket_id=body.ticket_id, 
+        channel=body.channel, 
+        past_history=past_history,
+        is_duplicate=is_dup,
+        duplicate_of=dup_id
+    )
 
     reply = result["reply"]
     ticket_action = result["ticket_action"]
@@ -41,18 +59,20 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
 
     action_type = ticket_action.get("action")
 
-    # Create ticket if agent decided to
+    # Force ticket creation if missing (except for chitchat/none)
     ticket_id = body.ticket_id
-    if action_type == "create" and not ticket_id:
+    agent_msg = None
+    if not ticket_id and action_type != "none":
         ticket = await svc.create_ticket(
             db,
-            title=ticket_action.get("title", body.message[:80]),
+            title=ticket_action.get("title", body.message[:80]) or "Support Request",
             team=ticket_action.get("team", "help_desk"),
             priority=ticket_action.get("priority", "P3"),
             summary=ticket_action.get("summary", ""),
             created_by=body.session_id,
         )
         ticket_id = ticket["id"]
+        action_type = "create" # Ensure we know a ticket was just made
     elif ticket_id and action_type == "resolve":
         await svc.update_ticket(db, ticket_id, status="resolved")
         ticket = await svc.get_ticket(db, ticket_id)
@@ -60,13 +80,15 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
     if ticket_id:
         # Save user message
         await svc.add_message(db, ticket_id=ticket_id, role="user", content=body.message, channel=body.channel)
-        # Save agent reply
-        agent_msg = await svc.add_message(db, ticket_id=ticket_id, role="agent", content=reply, channel=body.channel)
-        # Broadcast the new agent reply to WS
-        await manager.broadcast_to_ticket(ticket_id, {
-            "type": "new_message",
-            "message": agent_msg
-        })
+        
+        if reply:
+            # Save agent reply
+            agent_msg = await svc.add_message(db, ticket_id=ticket_id, role="agent", content=reply, channel=body.channel)
+            # Broadcast the new agent reply to WS
+            await manager.broadcast_to_ticket(ticket_id, {
+                "type": "new_message",
+                "message": agent_msg
+            })
         # Save agent steps (for admin reasoning view)
         for step in agent_steps:
             await svc.add_agent_step(
@@ -81,5 +103,5 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
         "reply": reply,
         "ticket": ticket,
         "kb_results_count": len(result.get("kb_results", [])),
-        "message_id": agent_msg["id"] if ticket_id else None
+        "message_id": agent_msg["id"] if agent_msg else None
     }

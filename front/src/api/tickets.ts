@@ -22,3 +22,8 @@ export async function listUserTickets(sessionId: string) {
   const { data } = await client.get(`/api/user/tickets?session_id=${sessionId}`);
   return data as { tickets: Record<string, unknown>[] };
 }
+
+export async function createTicket(title: string, channel: string, sessionId: string, team = 'help_desk') {
+  const { data } = await client.post(`/api/tickets/create?title=${encodeURIComponent(title)}&channel=${encodeURIComponent(channel)}&created_by=${encodeURIComponent(sessionId)}&team=${encodeURIComponent(team)}`);
+  return data as Record<string, unknown>;
+}

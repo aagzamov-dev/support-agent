@@ -1,6 +1,6 @@
 """Database models — Ticket, Message, AgentStep."""
 
-from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, Float
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -23,6 +23,12 @@ class Ticket(Base):
     updated_at = Column(DateTime)
     feedback_score = Column(Integer, nullable=True)     # e.g. 1 to 5
     feedback_text = Column(Text, nullable=True)
+    
+    # New fields for AI Redesign
+    category_id = Column(String, nullable=True)
+    sentiment_score = Column(String, default="neutral")
+    escalated_at = Column(DateTime, nullable=True)
+    duplicate_of = Column(String, ForeignKey("tickets.id"), nullable=True)
 
     messages = relationship("Message", back_populates="ticket", order_by="Message.created_at")
     agent_steps = relationship("AgentStep", back_populates="ticket", order_by="AgentStep.created_at")
@@ -38,7 +44,12 @@ class Message(Base):
     channel = Column(String, default="chat")  # chat, voice, email
     metadata_json = Column(Text, default="{}")
     created_at = Column(DateTime)
-
+    
+    # New metrics
+    token_count = Column(Integer, default=0)
+    llm_latency_ms = Column(Integer, default=0)
+    confidence_score = Column(Float, nullable=True) 
+    
     ticket = relationship("Ticket", back_populates="messages")
 
 

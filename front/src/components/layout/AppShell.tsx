@@ -7,7 +7,10 @@ export default function AppShell() {
                 <div className="sidebar-logo">🎙️ Support Agent</div>
                 <nav className="sidebar-nav">
                     <NavLink to="/" end className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                        💬 Chat
+                        💬 Chat & Voice
+                    </NavLink>
+                    <NavLink to="/email" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                        📧 Email Support
                     </NavLink>
                     <NavLink to="/admin" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                         🎫 Tickets

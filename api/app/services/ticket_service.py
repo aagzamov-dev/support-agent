@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+import math
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -86,6 +87,39 @@ async def update_ticket(db: AsyncSession, ticket_id: str, **kwargs: Any) -> dict
     return _ticket_to_dict(t) if t else None
 
 
+def _cosine_similarity(v1: list[float], v2: list[float]) -> float:
+    dot = sum(a * b for a, b in zip(v1, v2))
+    norm1 = math.sqrt(sum(a * a for a in v1))
+    norm2 = math.sqrt(sum(b * b for b in v2))
+    return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
+
+async def detect_duplicate_ticket(db: AsyncSession, session_id: str, message: str) -> str | None:
+    """Find if this message is highly similar (>0.85) to a recent open ticket."""
+    since = _now() - timedelta(hours=72)
+    q = select(Ticket).where(
+        Ticket.created_by == session_id,
+        Ticket.status == "open",
+        Ticket.created_at >= since
+    )
+    rows = (await db.execute(q)).scalars().all()
+    
+    if not rows:
+        return None
+        
+    from app.services.rag_service import embed_text_async, _embed_async
+    try:
+        msg_emb = await embed_text_async(message)
+        target_texts = [f"{t.title} {t.summary}" for t in rows]
+        if target_texts:
+            t_embs = await _embed_async(target_texts)
+            for t, t_emb in zip(rows, t_embs):
+                if _cosine_similarity(msg_emb, t_emb) > 0.85:
+                    return t.id
+    except Exception:
+        pass # fail silently if embedding fails
+    return None
+
+
 # ── Messages ───────────────────────────────────────────────────────────
 
 async def add_message(
@@ -129,6 +163,12 @@ def _ticket_to_dict(t: Ticket) -> dict:
         "id": t.id, "title": t.title, "team": t.team, "priority": t.priority,
         "status": t.status, "created_by": t.created_by, "assigned_to": t.assigned_to,
         "summary": t.summary or "",
+        "category_id": getattr(t, "category_id", ""),
+        "channel": getattr(t, "summary", "").replace("Channel: ", "") if "Channel:" in getattr(t, "summary", "") else "chat",
+        "sentiment_score": getattr(t, "sentiment_score", 0.0),
+        "escalated_at": t.escalated_at.isoformat() if getattr(t, "escalated_at", None) else None,
+        "duplicate_of": getattr(t, "duplicate_of", None),
+        "feedback_score": t.feedback_score,
         "created_at": t.created_at.isoformat() if t.created_at else "",
         "updated_at": t.updated_at.isoformat() if t.updated_at else "",
     }
@@ -142,6 +182,9 @@ def _msg_to_dict(m: Message) -> dict:
     return {
         "id": m.id, "ticket_id": m.ticket_id, "role": m.role,
         "content": m.content, "channel": m.channel, "metadata": meta,
+        "token_count": getattr(m, "token_count", 0),
+        "llm_latency_ms": getattr(m, "llm_latency_ms", 0),
+        "confidence_score": getattr(m, "confidence_score", None),
         "created_at": m.created_at.isoformat() if m.created_at else "",
     }
 
