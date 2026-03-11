@@ -38,18 +38,15 @@ async def _notify_ws(state: AgentState, message: str, event_type: str = "AGENT_T
 
 
 def _get_llm():
-    model_name = "gpt-4o-mini" if "gpt" in settings.LLM_MODEL else settings.LLM_MODEL
     return ChatOpenAI(
-        model=model_name,
+        model=settings.LLM_MODEL,
         temperature=settings.LLM_TEMPERATURE,
         api_key=settings.OPENAI_API_KEY,
     )
 
 def _get_fast_llm():
-    # Use gpt-4o-mini if possible for routing/triage
-    model_name = "gpt-4o-mini" if "gpt" in settings.LLM_MODEL else settings.LLM_MODEL
     return ChatOpenAI(
-        model=model_name,
+        model=settings.LLM_FAST_MODEL,
         temperature=0.0,
         api_key=settings.OPENAI_API_KEY,
     )
@@ -106,6 +103,7 @@ class TicketClassification(BaseModel):
     model_config = {"extra": "forbid"}
     reasoning: str
     action: ActionEnum
+    title: str = Field(default="", description="Short, descriptive ticket title summarizing the issue (max 10 words)")
     team: str = Field(default="help_desk")
     priority: PriorityEnum = Field(default=PriorityEnum.P3)
     summary: str = Field(default="")
@@ -138,8 +136,6 @@ async def triage(state: AgentState) -> dict:
                 "output": {"intent": "observe", "reason": "Admin is active in thread"}
             }]
         }
-    
-    llm = _get_fast_llm().with_structured_output(TriageOutput)
     
     prompt = TRIAGE_PROMPT.format(history=history_str)
     
@@ -303,6 +299,7 @@ async def ticket_action(state: AgentState) -> dict:
     
     t_action = {
         "action": result.action.value,
+        "title": result.title,
         "team": result.team,
         "priority": result.priority.value,
         "summary": result.summary
@@ -352,11 +349,12 @@ async def observe(state: AgentState) -> dict:
     history = state.get("chat_history_str", "").lower()
     user_msg = state["user_message"].lower()
     
-    reply = ""
-    # Only reply if it's an actual question or detailed answer, but stay silent on short thanks.
-    is_short_thanks = any(x in user_msg for x in ["thank", "ok", "done", "appreciate", "good"]) and len(user_msg) < 20
+    # If the user is thanking us/admin, be polite.
+    is_thanks = any(x in user_msg for x in ["thank", "tanks", "ok", "done", "appreciate", "good", "worked"])
     
-    if not is_short_thanks and "will answer soon" not in history:
+    if is_thanks:
+        reply = "You're very welcome! I'm glad we could help. Please let us know if there's anything else you need!"
+    elif "will answer soon" not in history:
         reply = "A human agent will answer soon."
         
     return {
@@ -398,7 +396,13 @@ async def quick_respond(state: AgentState) -> dict:
 async def handle_resolution(state: AgentState) -> dict:
     """Responds to user confirmation and sets resolution action."""
     await _notify_ws(state, "Closing ticket...", "AGENT_TYPING")
-    reply = "You're very welcome! I'm glad I could help. I'll go ahead and close this ticket for you. If you need anything else, just start a new chat!"
+    
+    # Check if we should be extra friendly
+    user_msg = state["user_message"].lower()
+    if any(x in user_msg for x in ["thank", "tanks", "appreciate", "worked", "fixed"]):
+        reply = "You're very welcome! I'm absolutely glad to help. I'll go ahead and mark this as resolved for you. If anything else comes up, don't hesitate to reach out!"
+    else:
+        reply = "I'm glad your issue is resolved! I'll go ahead and close this ticket now. Feel free to start a new chat if you need further assistance."
     
     agent_steps = list(state.get("agent_steps", []))
     agent_steps.append({

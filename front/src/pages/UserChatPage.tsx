@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { sendMessage, transcribeVoice, sendFeedback } from '../api/chat';
-import { getTicket, listUserTickets, createTicket } from '../api/tickets';
+import { getTicket, listUserTickets, createTicket, updateTicket } from '../api/tickets';
 import { formatDate } from '../lib/utils';
 import AudioRecorder from '../components/AudioRecorder';
-import { MessageSquare, Mic } from 'lucide-react';
+import VoiceMessage from '../components/VoiceMessage';
+import ReactMarkdown from 'react-markdown';
+import { MessageSquare, Mic, CheckCircle, XCircle } from 'lucide-react';
 
 interface ChatMsg {
     id: string | number;
@@ -27,6 +29,9 @@ export default function UserChatPage() {
     const [isResolved, setIsResolved] = useState(false);
     const [feedbackGiven, setFeedbackGiven] = useState(false);
     const [agentStatus, setAgentStatus] = useState<string | null>(null);
+
+    // Resolution prompt
+    const [showResolvedPrompt, setShowResolvedPrompt] = useState(false);
 
     // New Ticket Modal State
     const [showNewModal, setShowNewModal] = useState(false);
@@ -60,13 +65,13 @@ export default function UserChatPage() {
                     setMessages(prev => {
                         // Prevent duplicates
                         if (prev.some(x => x.id === m.id)) return prev;
-                        return [...prev, { id: m.id, role: m.role as any, content: m.content }];
+                        return [...prev, { id: m.id, role: m.role as any, content: m.content, audio_url: m.audio_url }];
                     });
                 } else if (data.type === "ticket_update") {
                     if (data.ticket.status === 'resolved') setIsResolved(true);
                     refetchHistory();
-                } else if (data.type?.startsWith("AGENT_")) {
-                    setAgentStatus(data.message);
+                } else if (data.type === "agent_status") {
+                    setAgentStatus(data.status);
                 }
             } catch (e) {
                 console.error("WS Parse error", e);
@@ -88,6 +93,7 @@ export default function UserChatPage() {
             setActiveTicket(t);
             setIsResolved(false);
             setFeedbackGiven(false);
+            setShowResolvedPrompt(false);
 
             let welcome = "Hello! 👋 I'm your support assistant. Let's get started on a new issue. What can I help you with?";
             if (newTicketChannel === 'email') welcome = "Subject: Open Support Ticket\n\nPlease reply with the details of your request in an email format.";
@@ -108,12 +114,13 @@ export default function UserChatPage() {
             setActiveTicket(t);
             setIsResolved(t.status === 'resolved');
             setFeedbackGiven(!!t.feedback_score);
+            setShowResolvedPrompt(false);
 
             const dbMessages = (t.messages || []).map((m: any) => ({
                 id: m.id, role: m.role, content: m.content, audio_url: m.metadata?.audio_url
             }));
 
-            setMessages([{ id: 0, role: 'agent', content: "Loading history..." }, ...dbMessages]);
+            setMessages(dbMessages);
         } catch {
             alert('Failed to load ticket.');
         }
@@ -153,11 +160,34 @@ export default function UserChatPage() {
                 return [...m, agentMsg];
             });
 
+            // If action is resolve OR user said thanks/worked, show the prompt
+            const lowerMsg = text.toLowerCase();
+            const isThanks = ["thank", "tanks", "worked", "fixed", "done"].some(k => lowerMsg.includes(k));
+            if ((res as any).action === 'resolve' || (isThanks && !isResolved)) {
+                setShowResolvedPrompt(true);
+            }
+
         } catch {
             setMessages((m) => [...m, { id: Date.now() + 1, role: 'system', content: '❌ Failed to get response. Please try again.' }]);
         }
         setLoading(false);
         setAgentStatus(null);
+    };
+
+    const handleResolveYes = async () => {
+        setShowResolvedPrompt(false);
+        if (!activeTicket) return;
+        try {
+            await updateTicket(activeTicket.id as string, { status: 'resolved' });
+            setIsResolved(true);
+            refetchHistory();
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const handleResolveNo = () => {
+        setShowResolvedPrompt(false);
     };
 
     const handleFeedback = async (score: number) => {
@@ -245,12 +275,25 @@ export default function UserChatPage() {
                         {messages.map((msg) => (
                             <div key={msg.id} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                                 <div className={`chat-bubble ${msg.role === 'user' ? 'chat-bubble-user' : msg.role === 'admin' ? 'chat-bubble-admin' : 'chat-bubble-agent'}`}>
-                                    {msg.role === 'admin' && <div style={{ fontWeight: 700, fontSize: '0.7rem', color: 'var(--warning)', marginBottom: 4, textTransform: 'uppercase' }}>🛡️ Human Agent</div>}
-                                    {msg.content}
-                                    {msg.audio_url && (
-                                        <div style={{ marginTop: 8 }}>
-                                            <audio src={msg.audio_url.startsWith('http') ? msg.audio_url : `http://localhost:8000${msg.audio_url.startsWith('/') ? '' : '/'}${msg.audio_url}`} controls style={{ height: 36, width: '100%', maxWidth: 240, borderRadius: 18, filter: msg.role === 'user' ? 'invert(1)' : 'none' }} />
-                                        </div>
+                                    {msg.role === 'admin' && <div style={{ fontWeight: 700, fontSize: '0.7rem', color: 'var(--warning)', marginBottom: 4, textTransform: 'uppercase' }}>🛡️ Administration</div>}
+                                    {/* Voice mode: show only voice bubble, no text */}
+                                    {activeTicket?.channel === 'voice' && msg.audio_url ? (
+                                        <VoiceMessage audioUrl={msg.audio_url} isUser={msg.role === 'user'} />
+                                    ) : (
+                                        <>
+                                            <div className="markdown-content">
+                                                {msg.role === 'agent' ? (
+                                                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                                ) : (
+                                                    msg.content
+                                                )}
+                                            </div>
+                                            {msg.audio_url && (
+                                                <div style={{ marginTop: 8 }}>
+                                                    <VoiceMessage audioUrl={msg.audio_url} isUser={msg.role === 'user'} />
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                     {msg.ticket && (
                                         <div style={{
@@ -277,6 +320,50 @@ export default function UserChatPage() {
                             <div className="agent-status-tag">
                                 <div className="spinner" />
                                 <span>{agentStatus || "Thinking..."}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Resolution prompt */}
+                    {showResolvedPrompt && !loading && !isResolved && (
+                        <div style={{
+                            display: 'flex', justifyContent: 'center', padding: '16px 0',
+                        }}>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                padding: '12px 20px', borderRadius: '30px',
+                                background: 'var(--bg-card)', border: '1px solid var(--border)',
+                                boxShadow: 'var(--shadow-sm)',
+                            }}>
+                                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Did this solve your problem?</span>
+                                <button
+                                    onClick={handleResolveYes}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 4,
+                                        padding: '6px 14px', borderRadius: '20px', border: 'none',
+                                        background: 'rgba(34, 197, 94, 0.15)', color: 'var(--success)',
+                                        cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+                                        transition: 'all 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(34, 197, 94, 0.3)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(34, 197, 94, 0.15)'}
+                                >
+                                    <CheckCircle size={14} /> Yes
+                                </button>
+                                <button
+                                    onClick={handleResolveNo}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 4,
+                                        padding: '6px 14px', borderRadius: '20px', border: 'none',
+                                        background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444',
+                                        cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+                                        transition: 'all 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'}
+                                >
+                                    <XCircle size={14} /> No
+                                </button>
                             </div>
                         </div>
                     )}
@@ -333,6 +420,10 @@ export default function UserChatPage() {
                                             }
                                             setMessages(m => [...m, { id: Date.now(), role: 'user', content: `🎤 ${res.transcript}`, audio_url: res.audio_url }]);
                                             setMessages(m => [...m, { id: res.message_id || Date.now() + 1, role: 'agent', content: res.reply, audio_url: res.agent_audio_url }]);
+                                            // Show resolution prompt if backend detected success
+                                            if (!isResolved && (res as any).action === 'resolve') {
+                                                setShowResolvedPrompt(true);
+                                            }
                                         } finally {
                                             setLoading(false);
                                         }

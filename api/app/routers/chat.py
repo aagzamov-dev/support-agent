@@ -63,9 +63,10 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
     ticket_id = body.ticket_id
     agent_msg = None
     if not ticket_id and action_type != "none":
+        generated_title = ticket_action.get("title") or body.message[:80] or "Support Request"
         ticket = await svc.create_ticket(
             db,
-            title=ticket_action.get("title", body.message[:80]) or "Support Request",
+            title=generated_title,
             team=ticket_action.get("team", "help_desk"),
             priority=ticket_action.get("priority", "P3"),
             summary=ticket_action.get("summary", ""),
@@ -76,6 +77,13 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
     elif ticket_id and action_type == "resolve":
         await svc.update_ticket(db, ticket_id, status="resolved")
         ticket = await svc.get_ticket(db, ticket_id)
+
+    # Update ticket title if it's still the generic default
+    if ticket_id and ticket and ticket.get("title") in ("New Support Request", "New Chat Support Ticket", "Voice Request"):
+        new_title = ticket_action.get("title")
+        if new_title:
+            await svc.update_ticket(db, ticket_id, title=new_title)
+            ticket["title"] = new_title
 
     if ticket_id:
         # Save user message
@@ -101,6 +109,7 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
 
     return {
         "reply": reply,
+        "action": action_type,
         "ticket": ticket,
         "kb_results_count": len(result.get("kb_results", [])),
         "message_id": agent_msg["id"] if agent_msg else None

@@ -62,6 +62,7 @@ async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_session)):
 
 class TicketUpdate(BaseModel):
     status: str | None = None
+    title: str | None = None
     assigned_to: str | None = None
     priority: str | None = None
     team: str | None = None

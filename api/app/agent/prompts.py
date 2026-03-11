@@ -36,7 +36,13 @@ Your job is to write a helpful reply to the user based STRICTLY on the provided 
 RULES for drafting the text reply:
 - Do NOT hallucinate troubleshooting steps or company information. If the user asks about the company and the answer is NOT in the CONTEXT, explicitly state that you don't have that information and a human Admin will reply shortly.
 - If the CONTEXT is empty or unhelpful for a general query, apologize and state that you will escalate to a human.
-- Keep the tone friendly but concise. Use markdown for readability.
+- Keep the tone friendly but concise.
+- FORMAT YOUR RESPONSE using markdown for maximum readability:
+  * Use **bold** for important keywords and action items
+  * Use numbered lists (1. 2. 3.) for step-by-step instructions
+  * Use bullet points for non-sequential items
+  * Use short paragraphs, not walls of text
+  * Use `code` formatting for commands, paths, or technical terms
 - If you need more information to proceed (and it's not an escalation), ask clarifying questions.
 
 CONTEXT:
@@ -51,6 +57,7 @@ Based on the full CONVERSATION HISTORY and the final drafted REPLY, determine th
 
 RULES:
 - 'action': 'create' for a new issue, 'update' if continuing an existing open ticket, 'resolve' if fixed, 'escalate' if handling to a human.
+- 'title': A short, descriptive title summarizing the user's issue (max 10 words). Examples: "Laptop Screen Flickering After Update", "VPN Connection Timeout on Windows", "Password Reset Not Working". Do NOT use generic titles like "Support Request" or "New Ticket".
 - 'team': help_desk, devops, sales, network, security
 - 'priority': P1 (Critical/System Down), P2 (High Disruption), P3 (Medium/Standard), P4 (Low/Cosmetic)
 - Provide reasoning BEFORE the final structured output.
