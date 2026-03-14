@@ -1,7 +1,14 @@
 """Knowledge Base router — semantic search + admin CRUD for documents."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel
+import io
+
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
+
 
 from app.services import rag_service
 
@@ -54,6 +61,52 @@ async def get_document(doc_id: str):
 async def create_document(body: DocumentCreate):
     doc = rag_service.add_document(body.model_dump())
     return {"document": doc, "message": "Document added and index rebuilt"}
+
+
+@router.post("/kb/documents/upload", status_code=201)
+async def upload_pdf(file: UploadFile = File(...)):
+    if not PdfReader:
+        raise HTTPException(500, "pypdf is not installed on the server.")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Only PDF files are supported.")
+        
+    try:
+        content = await file.read()
+        
+        import os
+        from pathlib import Path
+        KNOWLEDGE_DIR = Path("storage/knowledge")
+        KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
+        file_path = KNOWLEDGE_DIR / file.filename
+        
+        with open(file_path, "wb") as f:
+            f.write(content)
+            
+        reader = PdfReader(io.BytesIO(content))
+        sections = []
+        
+        for i, page in enumerate(reader.pages):
+            text = page.extract_text()
+            if text and text.strip():
+                sections.append({
+                    "heading": f"Page {i + 1}",
+                    "content": text.strip()
+                })
+                
+        if not sections:
+            raise HTTPException(400, "Could not extract any text from the PDF.")
+            
+        doc_data = {
+            "title": file.filename.replace(".pdf", "").replace(".PDF", ""),
+            "category": "pdf_document",
+            "tags": ["pdf"],
+            "sections": sections
+        }
+        
+        doc = rag_service.add_document(doc_data)
+        return {"document": doc, "message": f"Uploaded {len(sections)} pages from PDF and indexed."}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to process PDF: {str(e)}")
 
 
 @router.put("/kb/documents/{doc_id}")

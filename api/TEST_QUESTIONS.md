@@ -110,3 +110,21 @@ This document contains test scenarios to verify the agent's routing, response qu
    - ✅ Target: < 3 seconds total
 2. Average response time for a complex query with KB search
    - ✅ Target: < 5 seconds total
+
+---
+
+## 📂 Knowledge Base (RAG) Tests
+*Focus: AI should correctly parse and answer questions specifically from newly uploaded PDFs and JSONs.*
+
+**Test Data setup:** Upload `Sales_Playbook_2026.pdf` and use the API to add `Company_Discounts_Q3.json` to the Knowledge Base first.
+
+1. "What is the maximum discount I can offer on a standard plan?" (from JSON)
+   - ✅ Expected: "You can offer up to a 5% discount on standard plans without manager approval."
+2. "I'm trying to close an Enterprise deal for $60k. Are there any SLAs I can include?" (from PDF)
+   - ✅ Expected: "Yes, for clients over $50k MRR, you should involve a Senior Account Executive and you can offer a complimentary 12-month SLA."
+3. "Is there a promo code for Black Friday?" (from JSON)
+   - ✅ Expected: "Yes, during November 2026 you can offer an automatic 20% discount using the code BF2026-AUTOWIN."
+4. "A prospect is complaining that our premium support is too expensive. What should I say?" (from PDF)
+   - ✅ Expected: "Emphasize our 99.99% uptime guarantee. You are also authorized to provide a one-time 15% discount code: SAVE15B2B."
+5. "If I close a multi-year contract, what is my commission?" (from PDF)
+   - ✅ Expected: "Multi-year contracts receive an upfront 12% commission."

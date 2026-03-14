@@ -34,3 +34,12 @@ export async function reindexKB() {
   const { data } = await client.post('/api/kb/reindex');
   return data;
 }
+
+export async function uploadPDF(file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await client.post('/api/kb/documents/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}

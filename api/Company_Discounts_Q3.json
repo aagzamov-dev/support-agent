@@ -1,0 +1,22 @@
+[
+    {
+        "id": "kb-discount-rules",
+        "title": "Company Discount Rules Q3 2026",
+        "category": "Sales Rules",
+        "tags": ["discounts", "sales", "revenue"],
+        "sections": [
+            {
+                "heading": "Standard Discount Constraints",
+                "content": "Sales reps cannot offer more than a 5% discount on standard tier plans without manager approval. For Enterprise plans, a 10% discount is available but ONLY if the customer agrees to a 2-year commitment."
+            },
+            {
+                "heading": "Black Friday Special",
+                "content": "During the month of November 2026, the company is authorizing an automatic 20% discount on all active software subscriptions using the coupon code BF2026-AUTOWIN. This cannot be combined with any standard or enterprise tier discounts."
+            },
+            {
+                "heading": "Partnership Discounts",
+                "content": "If a customer is referred by Microsoft or AWS, they are immediately eligible for a flat $500 statement credit. The referral must be verified via the partner portal."
+            }
+        ]
+    }
+]

@@ -18,8 +18,11 @@ export default function AppShell() {
                     <NavLink to="/kb" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                         📚 Knowledge Base
                     </NavLink>
+                    <NavLink to="/tests" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`} style={{ marginTop: 'auto', borderTop: '1px solid var(--border)' }}>
+                        🧪 Test Questions
+                    </NavLink>
                 </nav>
-                <div style={{ marginTop: 'auto', padding: '16px 20px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                <div style={{ padding: '16px 20px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                     Support Desk AI v2.0
                 </div>
             </aside>

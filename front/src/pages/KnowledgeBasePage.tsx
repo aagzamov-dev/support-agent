@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listDocuments, createDocument, updateDocument, deleteDocument, searchKB } from '../api/kb';
+import { listDocuments, createDocument, updateDocument, deleteDocument, searchKB, uploadPDF } from '../api/kb';
 
 interface Section { heading: string; content: string; }
 interface Doc { id: string; title: string; category: string; tags: string[]; sections: Section[]; }
@@ -30,6 +30,24 @@ export default function KnowledgeBasePage() {
         onSuccess: () => qc.invalidateQueries({ queryKey: ['kb-docs'] }),
     });
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const uploadMut = useMutation({
+        mutationFn: (file: File) => uploadPDF(file),
+        onSuccess: () => { 
+            qc.invalidateQueries({ queryKey: ['kb-docs'] });
+            alert('PDF uploaded successfully!');
+        },
+        onError: (err: any) => alert(err?.response?.data?.detail || 'Upload failed'),
+    });
+
+    function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (file) {
+            uploadMut.mutate(file);
+        }
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+
     function resetForm() { setForm({ title: '', category: '', tags: '', sections: [{ heading: '', content: '' }] }); }
 
     function startEdit(doc: Doc) {
@@ -50,7 +68,15 @@ export default function KnowledgeBasePage() {
         <div>
             <div className="flex items-center justify-between mb-4">
                 <h1>📚 Knowledge Base</h1>
-                {!isEditing && <button className="btn btn-primary" onClick={() => { resetForm(); setCreating(true); setEditing(null); }}>+ Add Document</button>}
+                {!isEditing && (
+                    <div className="flex gap-2">
+                        <input type="file" accept=".pdf" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
+                        <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={uploadMut.isPending}>
+                            {uploadMut.isPending ? 'Uploading...' : '📄 Upload PDF'}
+                        </button>
+                        <button className="btn btn-primary" onClick={() => { resetForm(); setCreating(true); setEditing(null); }}>+ Add Document</button>
+                    </div>
+                )}
             </div>
 
             {/* Search test */}

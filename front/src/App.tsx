@@ -5,6 +5,7 @@ import UserChatPage from './pages/UserChatPage';
 import UserEmailPage from './pages/UserEmailPage';
 import AdminPage from './pages/AdminPage';
 import KnowledgeBasePage from './pages/KnowledgeBasePage';
+import TestQuestionsPage from './pages/TestQuestionsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/email" element={<UserEmailPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/kb" element={<KnowledgeBasePage />} />
+            <Route path="/tests" element={<TestQuestionsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
