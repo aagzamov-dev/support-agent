@@ -10,12 +10,13 @@ import ReactMarkdown from 'react-markdown';
 const TEAMS = ['all', 'help_desk', 'devops', 'sales', 'network', 'security'];
 const STATUSES = ['all', 'open', 'in_progress', 'resolved', 'closed'];
 const TEAM_LABELS: Record<string, string> = { help_desk: '🖥 Help Desk', devops: '⚙️ DevOps', sales: '💰 Sales', network: '🌐 Network', security: '🔒 Security' };
-const PRIORITY_COLORS: Record<string, string> = { P1: 'var(--critical)', P2: 'var(--high)', P3: 'var(--medium)', P4: 'var(--low)' };
+const PRIORITY_COLORS: Record<string, string> = { Critical: 'var(--critical)', High: 'var(--high)', Medium: 'var(--medium)', Low: 'var(--low)' };
 
 export default function AdminPage() {
     const qc = useQueryClient();
     const [teamFilter, setTeamFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [priorityFilter, setPriorityFilter] = useState('all');
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [newTickets, setNewTickets] = useState<Set<string>>(new Set());
     
@@ -28,8 +29,12 @@ export default function AdminPage() {
     const [localMessages, setLocalMessages] = useState<any[]>([]);
 
     const { data: ticketsData } = useQuery({
-        queryKey: ['tickets', teamFilter, statusFilter],
-        queryFn: () => listTickets(teamFilter === 'all' ? undefined : teamFilter, statusFilter === 'all' ? undefined : statusFilter),
+        queryKey: ['tickets', teamFilter, statusFilter, priorityFilter],
+        queryFn: () => listTickets(
+            teamFilter === 'all' ? undefined : teamFilter, 
+            statusFilter === 'all' ? undefined : statusFilter,
+            priorityFilter === 'all' ? undefined : priorityFilter
+        ),
         refetchInterval: 15000, // reduced from 5s since WS handles real-time
     });
 
@@ -156,11 +161,18 @@ export default function AdminPage() {
                 <div style={{ padding: '20px 16px', borderBottom: '1px solid var(--border)' }}>
                     <h2 style={{ fontSize: '1.1rem', marginBottom: 16 }}>Service Desk</h2>
                     <div style={{ display: 'flex', gap: 8 }}>
-                        <select className="form-select w-full" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} style={{ fontSize: '0.8rem' }}>
+                        <select className="form-select w-full" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)} style={{ fontSize: '0.8rem', padding: '6px' }}>
                             {TEAMS.map((t) => <option key={t} value={t}>{t === 'all' ? 'All Teams' : TEAM_LABELS[t] || t}</option>)}
                         </select>
-                        <select className="form-select w-full" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: '0.8rem' }}>
+                        <select className="form-select w-full" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: '0.8rem', padding: '6px' }}>
                             {STATUSES.map((s) => <option key={s} value={s}>{s === 'all' ? 'All Status' : s.replace('_', ' ')}</option>)}
+                        </select>
+                        <select className="form-select w-full" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ fontSize: '0.8rem', padding: '6px' }}>
+                            <option value="all">All Priorities</option>
+                            <option value="Critical">Critical</option>
+                            <option value="High">High</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Low">Low</option>
                         </select>
                     </div>
                 </div>

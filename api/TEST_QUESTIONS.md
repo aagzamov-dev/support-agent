@@ -113,6 +113,22 @@ This document contains test scenarios to verify the agent's routing, response qu
 
 ---
 
+## 🚦 Priority Scaling Tests
+*Focus: AI should correctly assign Critical, High, Medium, or Low priority based on severity and context.*
+
+1. "Our main production database just crashed and the entire customer portal is down."
+   - ✅ Expected Priority: `Critical` (Server problem / production outage)
+2. "We have a severe data breach, someone is actively exfiltrating customer data!"
+   - ✅ Expected Priority: `Critical` (Severe security breach)
+3. "The sales pipeline tool is broken for everyone, no one in the office can process new orders."
+   - ✅ Expected Priority: `High` (Major functionality broken affecting multiple users)
+4. "I get a 500 error when trying to upload a specific CSV file to my admin dashboard."
+   - ✅ Expected Priority: `Medium` (Standard software bug, single user)
+5. "My Windows laptop feels a bit slow when I have too many Chrome tabs open. How do I speed it up?"
+   - ✅ Expected Priority: `Low` (Simple PC slowdown, informational)
+
+---
+
 ## 📂 Knowledge Base (RAG) Tests
 *Focus: AI should correctly parse and answer questions specifically from newly uploaded PDFs and JSONs.*
 

@@ -1,9 +1,10 @@
 import client from './client';
 
-export async function listTickets(team?: string, status?: string) {
+export async function listTickets(team?: string, status?: string, priority?: string) {
   const params: Record<string, string> = {};
   if (team) params.team = team;
   if (status) params.status = status;
+  if (priority) params.priority = priority;
   const { data } = await client.get('/api/tickets', { params });
   return data as { tickets: Record<string, unknown>[] };
 }

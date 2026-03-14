@@ -26,7 +26,7 @@ def _now() -> datetime:
 
 async def create_ticket(
     db: AsyncSession, *, title: str, team: str = "help_desk",
-    priority: str = "P3", created_by: str = "user", summary: str = "",
+    priority: str = "Medium", created_by: str = "user", summary: str = "",
     channel: str = "chat",
 ) -> dict:
     t = Ticket(
@@ -72,13 +72,15 @@ async def get_ticket(db: AsyncSession, ticket_id: str) -> dict | None:
 
 async def list_tickets(
     db: AsyncSession, *, team: str | None = None,
-    status: str | None = None, limit: int = 50,
+    status: str | None = None, priority: str | None = None, limit: int = 50,
 ) -> list[dict]:
     q = select(Ticket).order_by(Ticket.created_at.desc())
     if team:
         q = q.where(Ticket.team == team)
     if status:
         q = q.where(Ticket.status == status)
+    if priority:
+        q = q.where(Ticket.priority == priority)
     q = q.limit(limit)
     rows = (await db.execute(q)).scalars().all()
     result = []

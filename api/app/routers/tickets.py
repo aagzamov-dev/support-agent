@@ -17,16 +17,17 @@ router = APIRouter(prefix="/api", tags=["tickets"])
 async def list_tickets(
     team: str | None = Query(None),
     status: str | None = Query(None),
+    priority: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_session),
 ):
-    return {"tickets": await svc.list_tickets(db, team=team, status=status, limit=limit)}
+    return {"tickets": await svc.list_tickets(db, team=team, status=status, priority=priority, limit=limit)}
 
 @router.post("/tickets/create")
 async def create_ticket_endpoint(
     title: str = Query("New Chat Support Ticket"),
     team: str = Query("help_desk"),
-    priority: str = Query("P3"),
+    priority: str = Query("Medium"),
     channel: str = Query("chat"),
     created_by: str = Query("user"),
     db: AsyncSession = Depends(get_session)

@@ -14,7 +14,7 @@ class Ticket(Base):
     id = Column(String, primary_key=True)
     title = Column(String, nullable=False)
     team = Column(String, nullable=False, default="help_desk")  # help_desk, devops, sales, network, security
-    priority = Column(String, nullable=False, default="P3")     # P1, P2, P3, P4
+    priority = Column(String, nullable=False, default="Medium")     # Critical, High, Medium, Low
     status = Column(String, nullable=False, default="open")     # open, in_progress, resolved, closed
     created_by = Column(String, default="user")
     assigned_to = Column(String, default="")

@@ -88,6 +88,17 @@ const TEST_DATA = [
     ]
   },
   {
+    category: "Priority Scaling Tests",
+    focus: "AI should correctly assign Critical, High, Medium, or Low priority based on severity and context.",
+    questions: [
+      { q: "Our main production database just crashed and the entire customer portal is down.", a: "Expected Priority: Critical (Server problem / production outage)" },
+      { q: "We have a severe data breach, someone is actively exfiltrating customer data!", a: "Expected Priority: Critical (Severe security breach)" },
+      { q: "The sales pipeline tool is broken for everyone, no one in the office can process new orders.", a: "Expected Priority: High (Major functionality broken affecting multiple users)" },
+      { q: "I get a 500 error when trying to upload a specific CSV file to my admin dashboard.", a: "Expected Priority: Medium (Standard software bug, single user)" },
+      { q: "My Windows laptop feels a bit slow when I have too many Chrome tabs open. How do I speed it up?", a: "Expected Priority: Low (Simple PC slowdown, informational)" }
+    ]
+  },
+  {
     category: "Knowledge Base (RAG) Tests",
     focus: "AI should correctly parse and answer questions specifically from uploaded KB documents (PDF and JSON).",
     questions: [

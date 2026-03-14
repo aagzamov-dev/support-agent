@@ -47,7 +47,11 @@ RULES:
 - 'action': 'create' for a new issue, 'update' if continuing an existing open ticket, 'resolve' if fixed, 'escalate' if handling to a human.
 - 'title': A short, descriptive title summarizing the user's issue (max 10 words). Examples: "Laptop Screen Flickering After Update", "VPN Connection Timeout on Windows", "Password Reset Not Working". Do NOT use generic titles like "Support Request" or "New Ticket".
 - 'team': help_desk, devops, sales, network, security
-- 'priority': P1 (Critical/System Down), P2 (High Disruption), P3 (Medium/Standard), P4 (Low/Cosmetic)
+- 'priority': Must be strictly one of ["Critical", "High", "Medium", "Low"]. 
+  - `Critical`: Server problems, production outages, complete system-wide failure, severe security breaches.
+  - `High`: Major functionality broken impacting multiple users or urgent business processes.
+  - `Medium`: Standard issues, work stoppage for a single user, regular software bugs.
+  - `Low`: Simple PC slow down, cosmetic issues, general 'how-to' IT questions, informational requests.
 - Provide reasoning BEFORE the final structured output.
 
 CONVERSATION HISTORY:

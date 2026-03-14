@@ -68,7 +68,7 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
             db,
             title=generated_title,
             team=ticket_action.get("team", "help_desk"),
-            priority=ticket_action.get("priority", "P3"),
+            priority=ticket_action.get("priority", "Medium"),
             summary=ticket_action.get("summary", ""),
             created_by=body.session_id,
             channel=body.channel,
@@ -79,12 +79,23 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_session)):
         await svc.update_ticket(db, ticket_id, status="resolved")
         ticket = await svc.get_ticket(db, ticket_id)
 
-    # Update ticket title if it's still the generic default
+    # Update ticket details if it's still the generic default
     if ticket_id and ticket and ticket.get("title") in ("New Support Request", "New Chat Support Ticket", "Voice Request"):
-        new_title = ticket_action.get("title")
-        if new_title:
-            await svc.update_ticket(db, ticket_id, title=new_title)
-            ticket["title"] = new_title
+        updates = {}
+        if ticket_action.get("title"):
+            updates["title"] = ticket_action["title"]
+        if ticket_action.get("team"):
+            updates["team"] = ticket_action["team"]
+        if ticket_action.get("priority"):
+            updates["priority"] = ticket_action["priority"]
+        
+        if updates:
+            await svc.update_ticket(db, ticket_id, **updates)
+            ticket.update(updates)
+            await manager.broadcast_to_ticket(ticket_id, {
+                "type": "ticket_update",
+                "ticket": ticket
+            })
 
     if ticket_id:
         # Save user message and broadcast via WS

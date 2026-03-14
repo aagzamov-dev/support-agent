@@ -89,10 +89,10 @@ class ActionEnum(str, Enum):
     none = "none"
 
 class PriorityEnum(str, Enum):
-    P1 = "P1"
-    P2 = "P2"
-    P3 = "P3"
-    P4 = "P4"
+    Critical = "Critical"
+    High = "High"
+    Medium = "Medium"
+    Low = "Low"
 
 class TicketClassification(BaseModel):
     model_config = {"extra": "forbid"}
@@ -100,7 +100,7 @@ class TicketClassification(BaseModel):
     action: ActionEnum
     title: str = Field(default="", description="Short, descriptive ticket title summarizing the issue (max 10 words)")
     team: str = Field(default="help_desk")
-    priority: PriorityEnum = Field(default=PriorityEnum.P3)
+    priority: PriorityEnum = Field(default=PriorityEnum.Medium)
     summary: str = Field(default="")
     is_duplicate: bool = Field(default=False)
     duplicate_of: str = Field(default="")
